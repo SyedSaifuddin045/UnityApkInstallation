@@ -146,84 +146,77 @@ public class ApkInstaller : MonoBehaviour
         {
             AndroidJavaClass unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
             AndroidJavaObject currentActivity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
-            AndroidJavaObject context = currentActivity.Call<AndroidJavaObject>("getApplicationContext");
 
-            // Create a content URI using ContentProvider approach
-            AndroidJavaObject uri = GetContentUriForFile(context, apkPath);
-
-            if (uri == null)
+            // Verify file exists first
+            AndroidJavaObject file = new AndroidJavaObject("java.io.File", apkPath);
+            bool fileExists = file.Call<bool>("exists");
+            long fileSize = file.Call<long>("length");
+            bool canRead = file.Call<bool>("canRead");
+            
+            Debug.Log($"File exists: {fileExists}");
+            Debug.Log($"File size: {fileSize} bytes");
+            Debug.Log($"File readable: {canRead}");
+            
+            if (!fileExists || fileSize == 0)
             {
-                Debug.LogError("Failed to create content URI");
+                Debug.LogError("APK file does not exist or is empty");
                 return;
             }
 
-            Debug.Log("Content URI created successfully");
+            // Verify the APK is valid by checking the package info
+            try
+            {
+                AndroidJavaObject packageManager = currentActivity.Call<AndroidJavaObject>("getPackageManager");
+                AndroidJavaObject packageInfo = packageManager.Call<AndroidJavaObject>("getPackageArchiveInfo", 
+                    apkPath, 0);
+                
+                if (packageInfo != null)
+                {
+                    string packageName = packageInfo.Get<string>("packageName");
+                    string versionName = packageInfo.Get<string>("versionName");
+                    int versionCode = packageInfo.Get<int>("versionCode");
+                    
+                    Debug.Log($"APK Package: {packageName}");
+                    Debug.Log($"APK Version: {versionName} ({versionCode})");
+                    Debug.Log("APK is valid!");
+                }
+                else
+                {
+                    Debug.LogError("APK file is corrupted or invalid - PackageManager cannot parse it");
+                    Debug.LogError("The file may have been corrupted during copy operation");
+                    return;
+                }
+            }
+            catch (Exception verifyEx)
+            {
+                Debug.LogError($"APK verification failed: {verifyEx.Message}");
+                Debug.LogError("The APK file appears to be corrupted");
+                return;
+            }
 
-            // Create install intent
-            AndroidJavaClass intentClass = new AndroidJavaClass("android.content.Intent");
-            AndroidJavaObject intent = new AndroidJavaObject("android.content.Intent", "android.intent.action.VIEW");
-            
-            intent.Call<AndroidJavaObject>("setDataAndType", uri, "application/vnd.android.package-archive");
-
-            // Add flags
-            int flagGrantRead = intentClass.GetStatic<int>("FLAG_GRANT_READ_URI_PERMISSION");
-            int flagNewTask = intentClass.GetStatic<int>("FLAG_ACTIVITY_NEW_TASK");
-            
-            intent.Call<AndroidJavaObject>("addFlags", flagGrantRead);
-            intent.Call<AndroidJavaObject>("addFlags", flagNewTask);
-
-            // Start installation
-            currentActivity.Call("startActivity", intent);
-            Debug.Log("=== Installation intent sent successfully ===");
+            // Check if Java plugin class exists
+            try
+            {
+                AndroidJavaClass pluginClass = new AndroidJavaClass("com.defaultcompany.apkinstallationtest.ApkInstallerPlugin");
+                Debug.Log("Java plugin class found!");
+                
+                // Call the installation method
+                pluginClass.CallStatic("installApk", currentActivity, apkPath);
+                
+                Debug.Log("=== Installation method called successfully ===");
+            }
+            catch (Exception pluginEx)
+            {
+                Debug.LogError($"Java plugin error: {pluginEx.Message}");
+                Debug.LogError("Make sure ApkInstallerPlugin.java is in: Assets/Plugins/Android/com/defaultcompany/apkinstallationtest/");
+                throw;
+            }
         }
         catch (Exception e)
         {
             Debug.LogError($"=== Installation failed ===");
             Debug.LogError($"Error: {e.Message}");
             Debug.LogError($"Stack trace: {e.StackTrace}");
-        }
-    }
-
-    private AndroidJavaObject GetContentUriForFile(AndroidJavaObject context, string filePath)
-    {
-        try
-        {
-            // Method 1: Try using Unity's built-in ContentProvider
-            string packageName = context.Call<string>("getPackageName");
-            string authority = packageName + ".fileprovider";
-
-            AndroidJavaObject file = new AndroidJavaObject("java.io.File", filePath);
-            
-            // Try to use content provider with custom implementation
-            AndroidJavaClass uriClass = new AndroidJavaClass("android.net.Uri");
-            
-            // Build content URI manually
-            string fileName = file.Call<string>("getName");
-            string contentUri = $"content://{authority}/cache/{fileName}";
-            
-            AndroidJavaObject uri = uriClass.CallStatic<AndroidJavaObject>("parse", contentUri);
-            
-            Debug.Log($"Created content URI: {contentUri}");
-            return uri;
-        }
-        catch (Exception e)
-        {
-            Debug.LogError($"Failed to create content URI: {e.Message}");
-            
-            // Fallback: Try direct file URI (may not work on newer Android versions)
-            try
-            {
-                AndroidJavaObject file = new AndroidJavaObject("java.io.File", filePath);
-                AndroidJavaClass uriClass = new AndroidJavaClass("android.net.Uri");
-                AndroidJavaObject uri = uriClass.CallStatic<AndroidJavaObject>("fromFile", file);
-                Debug.LogWarning("Using file:// URI (may not work on Android 7+)");
-                return uri;
-            }
-            catch (Exception fallbackEx)
-            {
-                Debug.LogError($"Fallback URI creation failed: {fallbackEx.Message}");
-                return null;
-            }
         }
     }
 }

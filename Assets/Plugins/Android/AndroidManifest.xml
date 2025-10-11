@@ -42,5 +42,12 @@
             <meta-data android:name="android.app.lib_name" android:value="unity" />
         </activity>
 
+        <!-- Custom FileProvider for sharing APK files -->
+        <provider
+            android:name="com.defaultcompany.apkinstallationtest.ApkFileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
     </application>
 </manifest>
