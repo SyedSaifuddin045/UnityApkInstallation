@@ -49,6 +49,7 @@ public class ApkInstaller : MonoBehaviour
         }
 
         InstallApk(pendingApkPath);
+        pendingApkPath = null; // Clear pending path to prevent double installation
     }
 
     private void OnApplicationFocus(bool hasFocus)
